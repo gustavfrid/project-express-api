@@ -1,8 +1,12 @@
 import express from 'express'
 import cors from 'cors'
-import listEndpoints from 'express-list-endpoints'
+import mongoose from 'mongoose'
+import dotenv from 'dotenv'
+
 const swaggerUi = require('swagger-ui-express')
 const swaggerJsdoc = require('swagger-jsdoc')
+
+dotenv.config()
 
 // If you're using one of our datasets, uncomment the appropriate import below
 // to get started!
@@ -38,17 +42,74 @@ app.use(cors())
 app.use(express.json())
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 
+app.use((req, res, next) => {
+  if (mongoose.connection.readyState === 1) {
+    next()
+  } else {
+    res.status(503).json({ error: 'Service unavailable' })
+  }
+})
+
+const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost/books' //'mongodb://localhost/books'
+mongoose.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.Promise = Promise
+
+const Book = mongoose.model('Book', {
+  bookID: Number,
+  title: String,
+  authors: String,
+  average_rating: Number,
+  isbn: Number,
+  isbn13: Number,
+  language_code: String,
+  num_pages: Number,
+  ratings_count: Number,
+  text_reviews_count: Number,
+})
+
+// clear db
+
+// insert data to db
+Book.deleteMany().then(() => {
+  new Book({
+    bookID: 36,
+    title: 'The Lord of the Rings: Weapons and Warfare',
+    authors: 'Chris   Smith-Christopher  Lee-Richard Taylor',
+    average_rating: 4.53,
+    isbn: 618391002,
+    isbn13: 9780618391004,
+    language_code: 'eng',
+    num_pages: 218,
+    ratings_count: 18934,
+    text_reviews_count: 43,
+  }).save()
+})
+
 /**
  * @swagger
- * /endpoints:
+ * /authors:
  *   get:
- *     summary: Lists all endpoints
+ *     summary: Lists all Authors
  *     responses:
  *       200:
  *         description: OK.
  */
-app.get('/endpoints', (req, res) => {
-  res.send(listEndpoints(app))
+app.get('/authors', async (req, res) => {
+  const authors = await Book.find()
+  res.json(authors)
+})
+
+/**
+ * @swagger
+ * /key:
+ *   get:
+ *     summary: Lists api key
+ *     responses:
+ *       200:
+ *         description: OK.
+ */
+app.get('/key', (req, res) => {
+  res.send(process.env.API_KEY)
 })
 
 /**
@@ -136,23 +197,38 @@ app.get('/books/search', (req, res) => {
  *       200:
  *         description: OK.
  */
-app.get('/book/isbn/:isbn', (req, res) => {
+app.get('/book/isbn/:isbn', async (req, res) => {
   const { isbn } = req.params
-  const book = data.find(item => item.isbn === +isbn || item.isbn13 === +isbn)
-  if (!book) {
-    res.status(404).send('No data found')
-  } else {
-    res.json(book)
+  try {
+    const book = await Book.findOne({ isbn: +isbn })
+    if (!book) {
+      res.status(404).send('No data found')
+    } else {
+      res.json(book)
+    }
+  } catch (err) {
+    res.status(400).json({ error: 'Invalid isbn' })
   }
-})
-
-app.get('/books/all', (req, res) => {
-  res.json(data)
 })
 
 /**
  * @swagger
- * /book/lang/{lang}:
+ * /books/all:
+ *   get:
+ *     summary: Returns all books
+ *     responses:
+ *       200:
+ *         description: OK.
+ */
+app.get('/books/all', (req, res) => {
+  Book.find().then(books => {
+    res.json(books)
+  })
+})
+
+/**
+ * @swagger
+ * /lang/{lang}:
  *   get:
  *     summary: Returns all books by language
  *     parameters:
